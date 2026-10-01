@@ -1,0 +1,55 @@
+# Contributing-factor scoring.
+#
+# A factor score is normalised evidence magnitude x duration x weight, clamped
+# to [0,1]. `max_value` is the magnitude that saturates the factor: an overspeed
+# reading of 160 km/h or above contributes its full weight. Nothing here implies
+# fault; these are magnitudes of observed signals.
+factors:
+  overspeed:
+    weight: 0.25
+    max_value: 160          # km/h at which the factor saturates
+    min_value: 90           # the detector threshold; below this there is no signal
+    duration_bonus: 0.2     # sustained overspeed scores above a momentary spike
+    description: "Speed above the configured limit, weighted by duration."
+
+  rapid_acceleration:
+    weight: 0.15
+    max_value: 10           # m/s^2
+    min_value: 3.0
+    duration_bonus: 0.1
+    description: "Longitudinal acceleration above threshold."
+
+  harsh_braking:
+    weight: 0.30
+    max_value: 100          # brake pedal force percent
+    min_value: 70
+    duration_bonus: 0.1
+    description: "Brake force with corroborating deceleration."
+
+  abrupt_heading_change:
+    weight: 0.15
+    max_value: 180          # degrees
+    min_value: 25
+    duration_bonus: 0.0
+    description: "Heading delta over a short interval."
+
+  sudden_stop:
+    weight: 0.30
+    max_value: 120          # km/h of speed lost
+    min_value: 50
+    duration_bonus: 0.0
+    description: "Large speed drop terminating at near-zero speed."
+
+  dtc_fault:
+    weight: 0.10
+    max_value: 5            # number of new diagnostic codes
+    min_value: 0.0
+    duration_bonus: 0.0
+    description: "Newly asserted diagnostic trouble codes."
+
+# Confidence reflects how complete the evidence is, not how severe it is. Late or
+# incomplete data lowers confidence while leaving the score untouched, so an
+# operator can see a strong signal measured on weak data.
+late_evidence_penalty: 0.15
+missing_field_penalty: 0.10
+min_confidence: 0.1

@@ -1,0 +1,60 @@
+# RBAC map. The API resolves permissions through this file only; no route may
+# hard-code a role name. Adding a permission means adding it to `permissions`
+# and granting it to at least one role, which the config validator enforces.
+permissions:
+  - incident:read
+  - incident:read_raw          # raw canonical telemetry behind an incident
+  - incident:acknowledge
+  - incident:close
+  - incident:invalidate
+  - incident:export
+  - incident:ai_summary
+  - vehicle:read
+  - vehicle:read_precise       # unmasked coordinates
+  - fleet:read
+  - analytics:read
+  - ops:read
+  - ops:chaos                  # trigger chaos hooks
+  - admin:users
+  - admin:roles
+  - admin:config
+  - admin:erasure
+  - audit:read
+
+roles:
+  VIEWER:
+    description: "Read-only access to incidents and fleet state with masked location."
+    permissions:
+      - incident:read
+      - vehicle:read
+      - fleet:read
+
+  ANALYST:
+    description: "Investigates incidents; may acknowledge and export evidence."
+    inherits: [VIEWER]
+    permissions:
+      - incident:read_raw
+      - incident:acknowledge
+      - incident:export
+      - incident:ai_summary
+      - analytics:read
+
+  FLEET_MANAGER:
+    description: "Owns fleet outcomes; may close or invalidate incidents."
+    inherits: [ANALYST]
+    permissions:
+      - incident:close
+      - incident:invalidate
+      - vehicle:read_precise
+      - ops:read
+
+  ADMIN:
+    description: "Platform administration. Holds every declared permission."
+    inherits: [FLEET_MANAGER]
+    permissions:
+      - admin:users
+      - admin:roles
+      - admin:config
+      - admin:erasure
+      - audit:read
+      - ops:chaos

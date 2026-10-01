@@ -1,0 +1,41 @@
+# Target profile from the PRD: 100,000 vehicles at ~1 event/vehicle/second with
+# 3x bursts and ~1 KB events. Reaching this on one laptop is hardware-bound;
+# docs/BENCHMARKS.md records the measured ceiling and the conditions rather than
+# asserting the target was met.
+name: full
+vehicles: 100000
+target_events_per_s: 100000
+tenants: 3
+fleets_per_tenant: 20
+
+burst_multiplier: 3.0
+burst_duration_s: 300
+
+simulator_workers: 0
+
+# 48 partitions on the hot path so consumer replicas can scale horizontally
+# without a repartition; the alert topic stays small because it is low volume
+# and ordering per vehicle matters more than parallelism.
+kafka_partitions:
+  telemetry.raw: 48
+  telemetry.canonical: 48
+  telemetry.quarantine: 12
+  incidents.events: 12
+  alerts.critical: 6
+
+consumer_replicas:
+  validator: 6
+  incident-processor: 6
+  telemetry-sink: 4
+  incident-persister: 2
+
+kafka_max_batch: 5000
+kafka_max_wait_ms: 50
+clickhouse_batch_size: 50000
+clickhouse_flush_ms: 500
+
+redis_state_ttl_s: 3600
+dedup_ttl_s: 900
+# Pads each event toward the PRD's ~1 KB realistic size. A bare event serialises to
+# roughly 330 bytes, so ~700 bytes of padding lands near 1 KB.
+event_padding_bytes: 700

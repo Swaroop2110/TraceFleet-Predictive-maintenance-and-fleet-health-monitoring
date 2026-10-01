@@ -1,0 +1,44 @@
+version: 1
+window_seconds: 30
+rules:
+  overspeed:
+    enabled: true
+    weight: 0.25
+    params:
+      speed_kmh_gt: 90
+      min_duration_s: 2
+  rapid_acceleration:
+    enabled: true
+    weight: 0.15
+    params:
+      accel_mps2_gt: 3.0
+  harsh_braking:
+    enabled: true
+    weight: 0.30
+    params:
+      brake_force_pct_gt: 70
+      decel_mps2_lt: -4.0
+  abrupt_heading_change:
+    enabled: true
+    weight: 0.15
+    params:
+      delta_deg_gt: 25
+      within_s: 1
+  sudden_stop:
+    enabled: true
+    weight: 0.30
+    params:
+      speed_drop_kmh_gt: 50
+      to_speed_lt: 5
+      within_s: 3
+  dtc_fault:
+    enabled: true
+    weight: 0.10
+    params:
+      any_new_dtc: true
+incident_trigger:
+  min_distinct_signals: 2
+  must_include_any:
+    - harsh_braking
+    - sudden_stop
+  cooldown_seconds: 60

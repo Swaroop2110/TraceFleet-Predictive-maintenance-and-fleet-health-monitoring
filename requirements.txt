@@ -1,0 +1,66 @@
+# Pinned exactly. A floating range means the image you tested is not the image
+# you deploy, and a supply-chain compromise arrives on the next rebuild.
+#
+# Versions are chosen to have prebuilt wheels for both CPython 3.12 (the image)
+# and 3.13, so a developer verifying locally exercises the same library versions
+# that ship rather than a different resolution of the same ranges.
+
+# -- API ---------------------------------------------------------------------
+fastapi==0.142.2
+uvicorn[standard]==0.34.0
+pydantic==2.13.5
+pydantic-settings==2.7.1
+python-multipart==0.0.32
+pyyaml==6.0.2
+
+# -- Auth --------------------------------------------------------------------
+# RS256 signing. `cryptography` supplies the RSA primitives PyJWT needs; password
+# hashing is stdlib PBKDF2 (packages/common/passwords.py) so there is no native
+# Argon2 build dependency.
+pyjwt==2.15.1
+cryptography==50.0.2
+
+# -- Stores ------------------------------------------------------------------
+# SQLAlchemy 2.0.x deliberately: the DSN helper names the psycopg2 driver
+# explicitly, but staying on 2.0 also avoids 2.1's change of default driver.
+sqlalchemy==2.0.36
+alembic==1.14.0
+psycopg2-binary==2.9.10
+redis==5.2.1
+clickhouse-connect==0.8.11
+
+# -- Streaming ---------------------------------------------------------------
+confluent-kafka==2.6.1
+
+# -- Observability -----------------------------------------------------------
+prometheus-client==0.21.1
+prometheus-fastapi-instrumentator==8.1.0
+opentelemetry-api==1.45.0
+opentelemetry-sdk==1.45.0
+opentelemetry-instrumentation==0.66b0
+opentelemetry-instrumentation-fastapi==0.66b0
+opentelemetry-instrumentation-sqlalchemy==0.66b0
+opentelemetry-instrumentation-redis==0.66b0
+opentelemetry-exporter-otlp-proto-grpc==1.45.0
+
+# -- AI ----------------------------------------------------------------------
+# Optional at runtime. Without GEMINI_API_KEY the provider registry falls back to
+# the deterministic mock, so the platform runs fully without a key.
+google-genai==2.26.0
+
+# -- HTTP client -------------------------------------------------------------
+# Used by the ops module to query Prometheus and by the test client.
+httpx==0.28.1
+
+# -- Testing -----------------------------------------------------------------
+pytest==9.1.1
+pytest-cov==6.0.0
+pytest-bdd==8.1.0
+
+# -- Security scanning -------------------------------------------------------
+bandit==1.8.0
+pip-audit==2.7.3
+starlette==1.7.0
+pillow==12.3.0
+ruff==0.16.9
+mypy==2.3.1

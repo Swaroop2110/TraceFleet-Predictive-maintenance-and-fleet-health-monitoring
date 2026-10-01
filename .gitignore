@@ -1,0 +1,25 @@
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+.venv/
+venv/
+
+node_modules/
+apps/web/dist/
+npm-debug.log*
+
+artifacts/
+*.log
+.DS_Store
+
+# Local investigation scripts and temporary signing keys
+.scratch*

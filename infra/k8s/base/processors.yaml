@@ -1,0 +1,437 @@
+# The four stream-processor roles.
+#
+# Each is its own Deployment because each is a separate Kafka consumer group and
+# scales independently: the sink is I/O bound on ClickHouse, the incident processor
+# is CPU and memory bound on per-vehicle windows. Scaling them together would
+# over-provision one to satisfy the other.
+#
+# Replica ceilings are capped by partition count. A consumer beyond the partition
+# count sits idle, so the HPA maximums match the `full` profile's 48 hot-path
+# partitions divided across roles.
+#
+# The security and volume blocks are repeated rather than shared by YAML anchor:
+# anchors are scoped to a single YAML document, and these are separate documents.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: validator
+  labels:
+    app.kubernetes.io/name: tracefleet
+    app.kubernetes.io/component: validator
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: validator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tracefleet
+        app.kubernetes.io/component: validator
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9108"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # The consumer commits offsets on SIGTERM, so the grace period lets the
+      # current batch finish. A hard kill mid-batch means a replay.
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: validator
+          image: tracefleet:latest
+          args: ["python", "apps/stream-processor/processor/main.py", "--role", "validator"]
+          ports:
+            - name: metrics
+              containerPort: 9108
+          envFrom:
+            - configMapRef:
+                name: tracefleet-env
+            - secretRef:
+                name: tracefleet-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: tracefleet-validator
+            - name: METRICS_PORT
+              value: "9108"
+          # No HTTP API to probe, so liveness checks the metrics endpoint the process
+          # serves itself. A hung poll loop stops serving it.
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 500m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: profiles
+              mountPath: /app/config/profiles
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: tracefleet-config
+        - name: profiles
+          configMap:
+            name: tracefleet-profiles
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-processor
+  labels:
+    app.kubernetes.io/name: tracefleet
+    app.kubernetes.io/component: incident-processor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: incident-processor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tracefleet
+        app.kubernetes.io/component: incident-processor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9109"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: incident-processor
+          image: tracefleet:latest
+          args: ["python", "apps/stream-processor/processor/main.py", "--role", "incident"]
+          ports:
+            - name: metrics
+              containerPort: 9109
+          envFrom:
+            - configMapRef:
+                name: tracefleet-env
+            - secretRef:
+                name: tracefleet-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: tracefleet-incident
+            - name: METRICS_PORT
+              value: "9109"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: "1"
+              # Holds a sliding window per active vehicle, so memory tracks fleet
+              # size rather than event rate.
+              memory: 1Gi
+            limits:
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: profiles
+              mountPath: /app/config/profiles
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: tracefleet-config
+        - name: profiles
+          configMap:
+            name: tracefleet-profiles
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: telemetry-sink
+  labels:
+    app.kubernetes.io/name: tracefleet
+    app.kubernetes.io/component: telemetry-sink
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: telemetry-sink
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tracefleet
+        app.kubernetes.io/component: telemetry-sink
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9110"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      # Longer grace than the others: the sink may hold a buffered batch, and killing
+      # it mid-flush replays that batch from Kafka.
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: telemetry-sink
+          image: tracefleet:latest
+          args: ["python", "apps/stream-processor/processor/main.py", "--role", "sink"]
+          ports:
+            - name: metrics
+              containerPort: 9110
+          envFrom:
+            - configMapRef:
+                name: tracefleet-env
+            - secretRef:
+                name: tracefleet-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: tracefleet-sink
+            - name: METRICS_PORT
+              value: "9110"
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 500m
+              memory: 768Mi
+            limits:
+              memory: 1500Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: profiles
+              mountPath: /app/config/profiles
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: tracefleet-config
+        - name: profiles
+          configMap:
+            name: tracefleet-profiles
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: incident-persister
+  labels:
+    app.kubernetes.io/name: tracefleet
+    app.kubernetes.io/component: incident-persister
+spec:
+  # Low volume relative to telemetry: one incident stands for thousands of events.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: incident-persister
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tracefleet
+        app.kubernetes.io/component: incident-persister
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9111"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      terminationGracePeriodSeconds: 45
+      containers:
+        - name: incident-persister
+          image: tracefleet:latest
+          args: ["python", "apps/stream-processor/processor/main.py", "--role", "persister"]
+          ports:
+            - name: metrics
+              containerPort: 9111
+          envFrom:
+            - configMapRef:
+                name: tracefleet-env
+            - secretRef:
+                name: tracefleet-secrets
+          env:
+            - name: OTEL_SERVICE_NAME
+              value: tracefleet-persister
+            - name: METRICS_PORT
+              value: "9111"
+            # Writes incidents for every tenant in one batch, so it connects as the
+            # owner rather than the RLS-restricted application role.
+            - name: POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tracefleet-secrets
+                  key: POSTGRES_OWNER_URL
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            failureThreshold: 4
+          resources:
+            requests:
+              cpu: 250m
+              memory: 384Mi
+            limits:
+              memory: 768Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: profiles
+              mountPath: /app/config/profiles
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: tracefleet-config
+        - name: profiles
+          configMap:
+            name: tracefleet-profiles
+---
+# Scaled on consumer lag as well as CPU. A consumer blocked on a slow downstream
+# store shows low CPU while lag grows, so CPU alone would never scale it out. The
+# Pods metric requires a custom-metrics adapter exporting tracefleet_consumer_lag;
+# without one the HPA falls back to the CPU target alone.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: validator
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: validator
+  minReplicas: 2
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: tracefleet_consumer_lag
+        target:
+          type: AverageValue
+          averageValue: "10000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      # Slow, because a consumer rebalance costs throughput and flapping replicas
+      # would cause one on every adjustment.
+      stabilizationWindowSeconds: 300
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: incident-processor
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: incident-processor
+  minReplicas: 2
+  maxReplicas: 12
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Pods
+      pods:
+        metric:
+          name: tracefleet_consumer_lag
+        target:
+          type: AverageValue
+          averageValue: "10000"
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: processors
+spec:
+  minAvailable: 1
+  selector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [validator, incident-processor, telemetry-sink, incident-persister]

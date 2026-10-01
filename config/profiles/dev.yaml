@@ -1,0 +1,35 @@
+# Default laptop profile. Same code as `full`, smaller numbers.
+name: dev
+vehicles: 2000
+target_events_per_s: 2000
+tenants: 3
+fleets_per_tenant: 20
+
+burst_multiplier: 3.0
+burst_duration_s: 300
+
+simulator_workers: 0          # 0 means os.cpu_count()
+
+kafka_partitions:
+  telemetry.raw: 6
+  telemetry.canonical: 6
+  telemetry.quarantine: 3
+  incidents.events: 3
+  alerts.critical: 3
+
+consumer_replicas:
+  validator: 1
+  incident-processor: 1
+  telemetry-sink: 1
+  incident-persister: 1
+
+# Small batches keep the dev feedback loop tight; latency matters more than
+# throughput when you are watching a single incident travel the pipeline.
+kafka_max_batch: 500
+kafka_max_wait_ms: 50
+clickhouse_batch_size: 2000
+clickhouse_flush_ms: 500
+
+redis_state_ttl_s: 86400
+dedup_ttl_s: 3600
+event_padding_bytes: 0

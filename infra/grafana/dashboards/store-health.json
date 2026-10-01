@@ -1,0 +1,133 @@
+{
+  "uid": "tracefleet-stores",
+  "title": "TraceFleet / Store Health",
+  "tags": ["tracefleet", "stores"],
+  "timezone": "utc",
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "description": "Postgres, ClickHouse, and Redis. Each store is used for what it is good at; see docs/adr/001-database-choice.md.",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Services reporting up",
+      "gridPos": { "h": 4, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [{ "expr": "sum(tracefleet_service_up)", "legendFormat": "up" }]
+    },
+    {
+      "type": "stat",
+      "title": "ClickHouse rows inserted (1h)",
+      "gridPos": { "h": 4, "w": 8, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(increase(tracefleet_clickhouse_rows_inserted_total[1h]))", "legendFormat": "rows" }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "stat",
+      "title": "Store failures (1h)",
+      "gridPos": { "h": 4, "w": 8, "x": 16, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(tracefleet_clickhouse_failures_total[1h])) + sum(increase(tracefleet_postgres_failures_total[1h]))",
+          "legendFormat": "failures"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "ClickHouse insert throughput",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(tracefleet_clickhouse_rows_inserted_total[1m]))",
+          "legendFormat": "rows/s"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "rowsps" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "ClickHouse insert latency",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(tracefleet_clickhouse_insert_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tracefleet_clickhouse_insert_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(tracefleet_clickhouse_insert_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Postgres operation latency p95",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tracefleet_postgres_operation_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Redis latency p95 by operation",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tracefleet_redis_operation_seconds_bucket[5m])) by (le, operation))",
+          "legendFormat": "{{operation}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Failures by store and operation",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (operation) (increase(tracefleet_clickhouse_failures_total[5m]))",
+          "legendFormat": "clickhouse {{operation}}"
+        },
+        {
+          "expr": "sum by (operation) (increase(tracefleet_postgres_failures_total[5m]))",
+          "legendFormat": "postgres {{operation}}"
+        },
+        {
+          "expr": "sum by (group) (increase(tracefleet_consumer_commit_failures_total[5m]))",
+          "legendFormat": "offset commit {{group}}"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

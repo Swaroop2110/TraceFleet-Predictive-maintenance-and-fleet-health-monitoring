@@ -1,0 +1,148 @@
+# Simulator scenario mix and hidden ground truth.
+#
+# `expected_signals`, `expected_severity`, and `should_create_incident` are the
+# labels scripts/evaluate_reconstruction.py scores the engine against. They are
+# derived from what config/detection_rules.yaml and config/severity.yaml
+# actually produce for each pattern, not from what the scenario is named. If a
+# threshold changes, these labels must be re-derived or the accuracy figure
+# becomes meaningless.
+#
+# Ground truth never travels on the Kafka path. The simulator writes it straight
+# to the ground_truth_incident table so the detection side cannot see it.
+
+scenarios:
+  normal:
+    enabled: true
+    probability_per_vehicle_hour: 3600.0     # the baseline stream
+    should_create_incident: false
+    description: "Baseline cruising. No risk pattern; must not raise an incident."
+
+  collision_like:
+    enabled: true
+    probability_per_vehicle_hour: 0.05
+    should_create_incident: true
+    expected_severity: CRITICAL
+    expected_signals:
+      - rapid_acceleration
+      - overspeed
+      - abrupt_heading_change
+      - harsh_braking
+      - sudden_stop
+      - dtc_fault
+    description: >
+      Appendix A pattern: acceleration, overspeed, abrupt heading change, harsh
+      braking, rapid deceleration to a stop, new DTC. Six distinct signals
+      including both sudden_stop and harsh_braking, which is the CRITICAL row.
+
+  overspeed_chain:
+    enabled: true
+    probability_per_vehicle_hour: 0.4
+    should_create_incident: true
+    expected_severity: HIGH
+    expected_signals:
+      - rapid_acceleration
+      - overspeed
+      - harsh_braking
+    description: >
+      Sustained overspeed ending in defensive braking. Three distinct signals
+      but no sudden stop, so it lands on the HIGH row rather than CRITICAL.
+
+  medium_severity:
+    enabled: true
+    probability_per_vehicle_hour: 0.8
+    should_create_incident: true
+    expected_severity: MEDIUM
+    expected_signals:
+      - rapid_acceleration
+      - harsh_braking
+    description: "Acceleration followed by harsh braking. Exactly two signals."
+
+  low_severity:
+    enabled: true
+    probability_per_vehicle_hour: 1.2
+    should_create_incident: true
+    expected_severity: MEDIUM
+    expected_signals:
+      - overspeed
+      - harsh_braking
+    description: >
+      Repeated overspeed then a single brake. Named for its intent, but with the
+      shipped matrix two distinct signals resolve to MEDIUM. Note the INFO and
+      LOW rows are unreachable while incident_trigger.min_distinct_signals is 2;
+      lowering that threshold makes them apply.
+
+  false_positive_hard_brake:
+    enabled: true
+    probability_per_vehicle_hour: 6.0
+    should_create_incident: false
+    description: >
+      One isolated harsh brake with a clean recovery. A single signal is below
+      min_distinct_signals, so the engine must stay quiet. This is the scenario
+      that proves the trigger is not merely a threshold alarm.
+
+  diagnostic_only:
+    enabled: true
+    probability_per_vehicle_hour: 2.0
+    should_create_incident: false
+    description: >
+      A new DTC on an otherwise normal stream. dtc_fault alone satisfies neither
+      min_distinct_signals nor must_include_any, so no incident is raised.
+
+  duplicate_storm:
+    enabled: true
+    probability_per_vehicle_hour: 1.0
+    params:
+      copies: 8
+    should_create_incident: false
+    description: >
+      The same event republished eight times. Seven must be suppressed by the
+      dedup gate and counted, and the survivor must not be amplified into a
+      pattern.
+
+  out_of_order:
+    enabled: true
+    probability_per_vehicle_hour: 1.5
+    should_create_incident: false
+    description: >
+      Events delivered with two positions swapped, inside the lateness window.
+      The window must re-sort them by event time so detector arithmetic is
+      unaffected.
+
+  late_arrival:
+    enabled: true
+    probability_per_vehicle_hour: 1.0
+    params:
+      delay_s: 45
+    should_create_incident: false
+    description: >
+      Events arriving 45 s after their event time, beyond lateness_window_s.
+      They must be stored and flagged late, never dropped and never re-stamped.
+
+  schema_fault:
+    enabled: true
+    probability_per_vehicle_hour: 0.5
+    should_create_incident: false
+    description: >
+      Bad VIN, negative speed, out-of-range latitude, unknown schema version.
+      Every one must land in quarantine with a specific reason code.
+
+  burst:
+    enabled: true
+    probability_per_vehicle_hour: 0.0     # driven by --burst, not sampled
+    params:
+      multiplier: 3.0
+      duration_s: 300
+    should_create_incident: false
+    description: >
+      Normal traffic at the profile's burst multiplier. Exercises back-pressure
+      and consumer lag, not detection.
+
+# Mix used by `--scenario mixed`, which is what the demo and Makefile drive.
+default_mix:
+  - normal
+  - collision_like
+  - overspeed_chain
+  - medium_severity
+  - low_severity
+  - false_positive_hard_brake
+  - diagnostic_only

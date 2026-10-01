@@ -1,0 +1,68 @@
+# OpenTelemetry Collector.
+#
+# Every service exports here rather than to Tempo directly, so the backend can be
+# swapped without touching application configuration.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+
+  # Bounded memory with back-pressure. Without this the collector grows until the
+  # container is OOM-killed, which loses traces silently; refusing spans instead
+  # makes the loss visible as an export error in the service.
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 75
+    spike_limit_percentage: 15
+
+  resource:
+    attributes:
+      - key: platform
+        value: tracefleet
+        action: upsert
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 2s
+      max_interval: 30s
+    sending_queue:
+      enabled: true
+      queue_size: 2000
+
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  # The collector's own metrics, scraped by Prometheus as the otel-collector job.
+  telemetry:
+    metrics:
+      level: basic
+      address: 0.0.0.0:8888
+    logs:
+      level: warn
+  pipelines:
+    traces:
+      receivers: [otlp]
+      # memory_limiter first, so it can reject before work is done on a span.
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo]

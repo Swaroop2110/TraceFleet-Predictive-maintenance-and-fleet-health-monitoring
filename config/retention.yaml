@@ -1,0 +1,22 @@
+# Retention windows, applied by scripts/retention_job.py across all three stores.
+#
+# Telemetry ages through three tiers. Hot is the Redis/recent-partition range
+# that the dashboard reads, warm is the ClickHouse TTL used for investigation
+# and analytics, cold is the archival bound. The ClickHouse table TTL is
+# generated from telemetry_warm_days, so changing it here changes the schema.
+telemetry_hot_days: 7
+telemetry_warm_days: 30
+telemetry_cold_days: 365
+
+# Incidents outlive telemetry: an investigation must survive the evidence window
+# it was built from, which is why evidence rows are copied into Postgres rather
+# than queried from ClickHouse on demand.
+incident_days: 730
+
+# Audit retention is deliberately the longest window and is the one value that
+# the erasure job will not shorten.
+audit_days: 2555          # 7 years
+ai_run_days: 365
+quarantine_days: 14
+
+redis_state_ttl_s: 86400

@@ -1,0 +1,90 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Production overlay: the `full` scale profile, higher replica floors, autoscaling on.
+#
+#     kubectl apply -k infra/k8s/overlays/prod
+#
+# Secrets are NOT defined here. The base carries CHANGE_ME placeholders so the
+# manifests are complete and applyable; a real deployment replaces them with
+# External Secrets or a CSI secret store. Committing production credentials to make
+# an overlay self-contained is the wrong trade.
+
+namespace: tracefleet
+
+resources:
+  - ../../base
+
+configMapGenerator:
+  - name: tracefleet-env
+    behavior: merge
+    literals:
+      - TRACEFLEET_ENV=production
+      - PROFILE=full
+      - LOG_LEVEL=INFO
+      - OTEL_ENVIRONMENT=production
+      - TRACEFLEET_ALLOW_ANONYMOUS=false
+      # No demo accounts in production. The API refuses to start with
+      # TRACEFLEET_ENV=production while default-password accounts exist.
+      - TRACEFLEET_SEED_DEMO_USERS=false
+      - CHAOS_EXECUTION_ENABLED=false
+      # Set to gemini once GEMINI_API_KEY is provided by the secret store; the
+      # registry falls back to the deterministic mock without it.
+      - LLM_PROVIDER=gemini
+
+replicas:
+  - name: api
+    count: 3
+  - name: validator
+    count: 4
+  - name: incident-processor
+    count: 4
+  - name: telemetry-sink
+    count: 3
+  - name: incident-persister
+    count: 2
+
+patches:
+  # Spread replicas across nodes. Without this the scheduler may co-locate every
+  # replica, and a single node failure takes the whole component down while the PDB
+  # reports itself satisfied.
+  - target:
+      kind: Deployment
+    patch: |
+      - op: add
+        path: /spec/template/spec/topologySpreadConstraints
+        value:
+          - maxSkew: 1
+            topologyKey: kubernetes.io/hostname
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/part-of: tracefleet
+
+  # Production resource requests, sized from the measurements in docs/BENCHMARKS.md.
+  - target:
+      kind: Deployment
+      name: incident-processor
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: 2Gi
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/limits/memory
+        value: 4Gi
+
+  - target:
+      kind: PodDisruptionBudget
+      name: api
+    patch: |
+      - op: replace
+        path: /spec/minAvailable
+        value: 2
+
+  - target:
+      kind: Deployment
+      name: web
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: api-prod:8000

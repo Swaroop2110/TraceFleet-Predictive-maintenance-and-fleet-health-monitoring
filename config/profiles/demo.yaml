@@ -1,0 +1,33 @@
+# Mid-scale profile for a recorded demo on a developer workstation.
+name: demo
+vehicles: 20000
+target_events_per_s: 20000
+tenants: 3
+fleets_per_tenant: 20
+
+burst_multiplier: 3.0
+burst_duration_s: 300
+
+simulator_workers: 0
+
+kafka_partitions:
+  telemetry.raw: 24
+  telemetry.canonical: 24
+  telemetry.quarantine: 6
+  incidents.events: 6
+  alerts.critical: 3
+
+consumer_replicas:
+  validator: 2
+  incident-processor: 2
+  telemetry-sink: 2
+  incident-persister: 1
+
+kafka_max_batch: 2000
+kafka_max_wait_ms: 50
+clickhouse_batch_size: 10000
+clickhouse_flush_ms: 500
+
+redis_state_ttl_s: 86400
+dedup_ttl_s: 3600
+event_padding_bytes: 512

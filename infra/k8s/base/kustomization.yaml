@@ -1,0 +1,87 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Shared base. Overlays under infra/k8s/overlays patch replica counts, the image
+# tag, and the scale profile; nothing environment-specific belongs here.
+#
+#     kubectl apply -k infra/k8s/overlays/dev
+#     kubectl apply -k infra/k8s/overlays/prod
+#
+# Stateful dependencies (Postgres, ClickHouse, Kafka, Redis) are deliberately NOT
+# included. Running them as StatefulSets here would imply this manifest set is a
+# production-ready data platform. Use a managed service or a dedicated operator and
+# point the connection strings at it; see docs/RUNBOOK.md.
+
+namespace: tracefleet
+
+labels:
+  - includeSelectors: false
+    pairs:
+      app.kubernetes.io/part-of: tracefleet
+
+resources:
+  - namespace.yaml
+  - migrate-job.yaml
+  - api.yaml
+  - web.yaml
+  - processors.yaml
+  - network-policy.yaml
+
+# The YAML configuration tree is mounted as a ConfigMap, which is what makes
+# thresholds a deployment artefact rather than a rebuild.
+# Paths are relative to this file, so they reach back to the repository's single
+# config/ tree rather than a copy. A copy would drift from what the tests validate.
+configMapGenerator:
+  - name: tracefleet-config
+    files:
+      - ../../../config/features.yaml
+      - ../../../config/detection_rules.yaml
+      - ../../../config/correlation.yaml
+      - ../../../config/severity.yaml
+      - ../../../config/factors.yaml
+      - ../../../config/scenarios.yaml
+      - ../../../config/retention.yaml
+      - ../../../config/privacy.yaml
+      - ../../../config/roles.yaml
+  - name: tracefleet-profiles
+    files:
+      - ../../../config/profiles/dev.yaml
+      - ../../../config/profiles/demo.yaml
+      - ../../../config/profiles/full.yaml
+  - name: tracefleet-env
+    literals:
+      - TRACEFLEET_ENV=production
+      - PROFILE=dev
+      - LOG_LEVEL=INFO
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_URL=redis://redis:6379/0
+      - CLICKHOUSE_HOST=clickhouse
+      - CLICKHOUSE_PORT=8123
+      - CLICKHOUSE_DB=tracefleet
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_ENVIRONMENT=production
+      - PROMETHEUS_URL=http://prometheus:9090
+      - TRACEFLEET_ALLOW_ANONYMOUS=false
+      - TRACEFLEET_SEED_DEMO_USERS=false
+      - CHAOS_EXECUTION_ENABLED=false
+      - LLM_PROVIDER=mock
+      - JWT_KEY_DIR=/var/lib/tracefleet/keys
+      - JWT_PRIVATE_KEY_PATH=/var/lib/tracefleet/keys/jwt_private.pem
+      - JWT_PUBLIC_KEY_PATH=/var/lib/tracefleet/keys/jwt_public.pem
+
+# Placeholder only. Real values come from a secret manager (External Secrets, Vault,
+# or a cloud provider's CSI driver) and must never be committed.
+secretGenerator:
+  - name: tracefleet-secrets
+    literals:
+      - POSTGRES_URL=postgresql://tracefleet_app:CHANGE_ME@postgres:5432/tracefleet
+      - POSTGRES_OWNER_URL=postgresql://tracefleet:CHANGE_ME@postgres:5432/tracefleet
+      - POSTGRES_APP_PASSWORD=CHANGE_ME
+      - CLICKHOUSE_PASSWORD=CHANGE_ME
+      - GEMINI_API_KEY=""
+    options:
+      disableNameSuffixHash: false
+
+images:
+  - name: tracefleet
+    newTag: latest

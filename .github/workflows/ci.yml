@@ -1,0 +1,68 @@
+name: TraceFleet CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - run: python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+      - run: npm --prefix apps/web ci
+      - run: make lint typecheck test
+      - run: cp .env.example .env && make up
+      - run: make coverage
+      - run: node apps/web/node_modules/@playwright/test/cli.js install --with-deps chromium
+      - run: node apps/web/node_modules/@playwright/test/cli.js test --config apps/web/playwright.config.ts
+      - run: docker compose exec -T -e OTEL_TRACES_SAMPLER_ARG=1 api python scripts/verify_tracing.py
+      - run: make chaos-recover
+      - run: make soak SOAK_MINUTES=1
+      - run: make evaluate
+      - uses: azure/setup-kubectl@v4
+      - run: make k8s-validate
+      - if: always()
+        run: docker compose logs --no-color > artifacts/compose.log
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports
+          path: artifacts/
+      - if: always()
+        run: docker compose down
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+      - run: npm --prefix apps/web ci
+      - run: bash tests/security/scan.sh
+      - uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: fs
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          format: json
+          output: artifacts/trivy.json
+          skip-dirs: .venv,apps/web/node_modules
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: artifacts/

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RawTelemetryV1",
+  "type": "object",
+  "properties": {
+    "event_id": { "type": "string" },
+    "vehicle_id": { "type": "string" },
+    "vin": { "type": "string", "minLength": 17, "maxLength": 17 },
+    "ts": { "type": "string", "format": "date-time" },
+    "lat": { "type": "number", "minimum": -90, "maximum": 90 },
+    "lon": { "type": "number", "minimum": -180, "maximum": 180 },
+    "speed_kmh": { "type": "number", "minimum": 0, "maximum": 300 },
+    "acceleration_mps2": { "type": "number", "minimum": -20, "maximum": 20 },
+    "brake_force_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+    "heading_deg": { "type": "number", "minimum": 0, "maximum": 360 },
+    "rpm": { "type": "integer", "minimum": 0 },
+    "soc_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+    "odo_km": { "type": "number", "minimum": 0 },
+    "dtc": { "type": "array", "items": { "type": "string" } },
+    "evt": { "type": "string" },
+    "seq": { "type": "integer", "minimum": 0 },
+    "schema_version": { "type": "string", "const": "1.0" }
+  },
+  "required": ["event_id", "vehicle_id", "vin", "ts", "lat", "lon", "speed_kmh", "acceleration_mps2", "brake_force_pct", "heading_deg", "seq", "schema_version"]
+}

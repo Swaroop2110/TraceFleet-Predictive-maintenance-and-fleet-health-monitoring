@@ -1,0 +1,126 @@
+{
+  "uid": "tracefleet-ai",
+  "title": "TraceFleet / AI Layer",
+  "tags": ["tracefleet", "ai"],
+  "timezone": "utc",
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "description": "Narrative generation and its validation. Rejections are the validator doing its job; a sustained rise means the provider or the prompt has drifted.",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Summaries accepted (6h)",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(tracefleet_ai_requests_total{outcome=\"accepted\"}[6h]))",
+          "legendFormat": "accepted"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Summaries withheld (6h)",
+      "description": "Validation rejected too many statements, so nothing was published. Preferable to a weak narrative.",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(tracefleet_ai_requests_total{outcome=\"withheld\"}[6h]))",
+          "legendFormat": "withheld"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Cache hits (6h)",
+      "description": "Same prompt and evidence returns the stored run, so a summary stays quotable.",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(tracefleet_ai_requests_total{outcome=\"cached\"}[6h]))",
+          "legendFormat": "cached"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Provider latency p95",
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tracefleet_ai_latency_seconds_bucket[30m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s", "decimals": 2 } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Requests by provider and outcome",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (provider, outcome) (increase(tracefleet_ai_requests_total[15m]))",
+          "legendFormat": "{{provider}} / {{outcome}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Validation failures by reason",
+      "description": "unknown_citation and ungrounded_number indicate hallucination; forbidden_language indicates a prompt regression.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (reason) (increase(tracefleet_ai_validation_failures_total[15m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Token usage",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (kind) (increase(tracefleet_ai_tokens_total[1h]))",
+          "legendFormat": "{{kind}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "short" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Provider errors",
+      "description": "Narrative generation degrades; deterministic evidence and factor scores are unaffected.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (provider) (increase(tracefleet_ai_requests_total{outcome=\"error\"}[15m]))",
+          "legendFormat": "{{provider}}"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

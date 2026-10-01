@@ -1,0 +1,16 @@
+apiVersion: 1
+
+providers:
+  - name: tracefleet
+    orgId: 1
+    folder: TraceFleet
+    type: file
+    # Read-only in the UI: dashboards are version-controlled under
+    # infra/grafana/dashboards, so an edit made in Grafana would be lost on the next
+    # container restart and is better prevented than silently discarded.
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

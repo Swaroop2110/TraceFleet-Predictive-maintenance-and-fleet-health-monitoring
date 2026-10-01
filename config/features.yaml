@@ -1,0 +1,18 @@
+features:
+  incident_detection_rules:  { enabled: true,  depends_on: [],                      description: "Deterministic rule engine" }
+  anomaly_model:             { enabled: false, depends_on: [incident_detection_rules], description: "Isolation Forest / robust z-score scoring" }
+  ai_summary:                { enabled: true,  depends_on: [incident_detection_rules], description: "Gemini evidence-cited narrative" }
+  ai_prompt_injection_guard: { enabled: true,  depends_on: [ai_summary] }
+  pgvector_similarity:       { enabled: false, depends_on: [incident_detection_rules], description: "Similar-incident retrieval" }
+  redis_hot_state:           { enabled: true,  depends_on: [] }
+  clickhouse_sink:           { enabled: true,  depends_on: [] }
+  evidence_export:           { enabled: true,  depends_on: [incident_detection_rules] }
+  privacy_location_masking:  { enabled: true,  depends_on: [] }
+  right_to_erasure:          { enabled: true,  depends_on: [] }
+  driver_identity:           { enabled: false, depends_on: [], description: "Pseudonymous driver association" }
+  multi_tenant:              { enabled: true,  depends_on: [] }
+  keycloak_oidc:             { enabled: false, depends_on: [] }
+  ops_dashboard:             { enabled: true,  depends_on: [] }
+  admin_ui:                  { enabled: true,  depends_on: [] }
+  websocket_live_push:       { enabled: true,  depends_on: [redis_hot_state] }
+  chaos_hooks:               { enabled: true,  depends_on: [] }

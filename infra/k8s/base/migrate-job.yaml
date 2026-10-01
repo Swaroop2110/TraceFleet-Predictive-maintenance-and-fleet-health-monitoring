@@ -1,0 +1,230 @@
+# Schema migration, run as a pre-install/pre-upgrade hook.
+#
+# A Job rather than an init container on the API Deployment: with several API
+# replicas, init containers would race to run the same migration. A Job runs once,
+# and the Deployments wait for it.
+#
+# Connects as the owner: DDL, the RLS policies, and the cross-tenant seed all require
+# ownership, and the API's restricted role has none of those rights.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  labels:
+    app.kubernetes.io/name: tracefleet
+    app.kubernetes.io/component: migrate
+  annotations:
+    # Kustomize has no hook ordering, so with Argo CD or Helm this annotation is what
+    # sequences the Job ahead of the Deployments.
+    argocd.argoproj.io/hook: PreSync
+    argocd.argoproj.io/sync-wave: "-1"
+spec:
+  backoffLimit: 3
+  # Retained briefly after success so the logs are readable.
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: tracefleet
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: alembic
+          image: tracefleet:latest
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef:
+                name: tracefleet-env
+            - secretRef:
+                name: tracefleet-secrets
+          env:
+            - name: POSTGRES_URL
+              valueFrom:
+                secretKeyRef:
+                  name: tracefleet-secrets
+                  key: POSTGRES_OWNER_URL
+            - name: OTEL_SDK_DISABLED
+              value: "true"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: profiles
+              mountPath: /app/config/profiles
+              readOnly: true
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: config
+          configMap:
+            name: tracefleet-config
+        - name: profiles
+          configMap:
+            name: tracefleet-profiles
+---
+# Retention, on a schedule. Windows come from config/retention.yaml, so changing the
+# policy is a ConfigMap change rather than a CronJob edit.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: retention
+  labels:
+    app.kubernetes.io/name: tracefleet
+    app.kubernetes.io/component: retention
+spec:
+  # 03:15 UTC daily, off the peak of any timezone's working day.
+  schedule: "15 3 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: maintenance
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
+          containers:
+            - name: retention
+              image: tracefleet:latest
+              command: ["python", "scripts/retention_job.py", "--verify"]
+              envFrom:
+                - configMapRef:
+                    name: tracefleet-env
+                - secretRef:
+                    name: tracefleet-secrets
+              env:
+                # Spans tenants and calls a SECURITY DEFINER function to age out
+                # append-only audit rows, so it needs the owner role.
+                - name: POSTGRES_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: tracefleet-secrets
+                      key: POSTGRES_OWNER_URL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: config
+                  mountPath: /app/config
+                  readOnly: true
+                - name: profiles
+                  mountPath: /app/config/profiles
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: config
+              configMap:
+                name: tracefleet-config
+            - name: profiles
+              configMap:
+                name: tracefleet-profiles
+---
+# Right-to-erasure. Runs every 15 minutes rather than daily: a data-subject request
+# has a statutory deadline, and the job is a no-op when nothing is pending.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: erasure
+  labels:
+    app.kubernetes.io/name: tracefleet
+    app.kubernetes.io/component: erasure
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/component: maintenance
+        spec:
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            fsGroup: 10001
+          containers:
+            - name: erasure
+              image: tracefleet:latest
+              command: ["python", "scripts/erasure_job.py"]
+              envFrom:
+                - configMapRef:
+                    name: tracefleet-env
+                - secretRef:
+                    name: tracefleet-secrets
+              env:
+                - name: POSTGRES_URL
+                  valueFrom:
+                    secretKeyRef:
+                      name: tracefleet-secrets
+                      key: POSTGRES_OWNER_URL
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 256Mi
+                limits:
+                  memory: 512Mi
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: config
+                  mountPath: /app/config
+                  readOnly: true
+                - name: profiles
+                  mountPath: /app/config/profiles
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir: {}
+            - name: config
+              configMap:
+                name: tracefleet-config
+            - name: profiles
+              configMap:
+                name: tracefleet-profiles

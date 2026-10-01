@@ -1,0 +1,236 @@
+# Alert rules.
+#
+# Each rule names the SLO or invariant it protects. Thresholds are chosen so a rule
+# fires on a condition an operator would act on, not on every transient blip — an
+# alert that fires routinely trains people to ignore it.
+
+groups:
+  # -------------------------------------------------------------------------
+  - name: tracefleet-pipeline
+    interval: 15s
+    rules:
+      - alert: ConsumerLagGrowing
+        # Lag itself is normal; lag that keeps growing means consumption is slower
+        # than production and will not recover on its own.
+        expr: |
+          sum by (group) (tracefleet_consumer_lag) > 50000
+          and deriv(sum by (group) (tracefleet_consumer_lag)[5m:]) > 0
+        for: 5m
+        labels:
+          severity: warning
+          component: stream-processor
+        annotations:
+          summary: "Consumer lag is growing for {{ $labels.group }}"
+          description: >
+            Lag is above 50k and still rising. Consumption is not keeping up with
+            production. Check CPU on the role, then whether a downstream store is
+            applying back-pressure.
+          runbook: docs/RUNBOOK.md#consumer-lag
+
+      - alert: ConsumerPausedTooLong
+        # A paused consumer is back-pressure working correctly, but a long pause
+        # means the downstream store has not recovered.
+        expr: tracefleet_consumer_paused == 1
+        for: 10m
+        labels:
+          severity: critical
+          component: stream-processor
+        annotations:
+          summary: "{{ $labels.group }} has been paused for 10 minutes"
+          description: >
+            The consumer paused its partitions because a downstream store rejected
+            writes. Data is safe in Kafka and lag is growing by design. Fix the store.
+          runbook: docs/RUNBOOK.md#back-pressure
+
+      - alert: NoTelemetryIngested
+        expr: sum(rate(tracefleet_events_accepted_total[5m])) == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: validator
+        annotations:
+          summary: "No telemetry has been accepted for 5 minutes"
+          description: >
+            Either no producer is running (expected when the simulator is stopped) or
+            the validator is rejecting everything. Check
+            tracefleet_events_rejected_total by reason.
+
+      - alert: HighRejectionRate
+        # A schema fault rate above 5% suggests a producer change or a bad adapter
+        # rather than occasional bad data.
+        expr: |
+          sum(rate(tracefleet_events_rejected_total[5m]))
+          /
+          clamp_min(sum(rate(tracefleet_events_accepted_total[5m]))
+                    + sum(rate(tracefleet_events_rejected_total[5m])), 1) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: validator
+        annotations:
+          summary: "Over 5% of events are being quarantined"
+          description: >
+            Check the reason breakdown. A single dominant reason usually means an
+            upstream schema change.
+
+      - alert: DeadLetterMessages
+        # Any DLQ traffic means a message could not be processed at all.
+        expr: increase(tracefleet_events_dlq_total[15m]) > 0
+        for: 1m
+        labels:
+          severity: warning
+          component: stream-processor
+        annotations:
+          summary: "Messages are being dead-lettered from {{ $labels.topic }}"
+          description: >
+            A message failed repeatedly and was isolated so it could not block its
+            partition. Inspect the .dlq topic.
+
+      - alert: WindowEvictionsFromCapacity
+        # Capacity eviction means the active-vehicle ceiling is too low for the
+        # workload, and windows are being discarded before their time.
+        expr: increase(tracefleet_window_evictions_total{reason="capacity"}[10m]) > 100
+        for: 5m
+        labels:
+          severity: warning
+          component: incident-processor
+        annotations:
+          summary: "Vehicle windows are being evicted by the capacity guard"
+          description: >
+            More vehicles are active than correlation.max_active_vehicles allows.
+            Detection quality degrades for evicted vehicles. Raise the ceiling or add
+            a replica.
+
+  # -------------------------------------------------------------------------
+  - name: tracefleet-slo
+    interval: 15s
+    rules:
+      - alert: CriticalAlertLatencyBreach
+        # The PRD's 5-second budget from event time to critical alert.
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(tracefleet_event_to_alert_seconds_bucket[5m])) by (le)) > 5
+        for: 5m
+        labels:
+          severity: critical
+          component: incident-processor
+          slo: critical_alert_5s
+        annotations:
+          summary: "Critical alert latency p95 is above the 5 second target"
+          description: "Measured from event time to the alerts.critical publish."
+
+      - alert: DashboardLatencyBreach
+        # The PRD's 2-second budget from event time to dashboard.
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(tracefleet_event_to_dashboard_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: incident-processor
+          slo: dashboard_2s
+        annotations:
+          summary: "Dashboard latency p95 is above the 2 second target"
+
+      - alert: ApiLatencyP95Breach
+        expr: |
+          histogram_quantile(0.95,
+            sum(rate(http_request_duration_seconds_bucket{handler!="/metrics"}[5m])) by (le)) > 0.2
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+          slo: api_p95_200ms
+        annotations:
+          summary: "API p95 latency is above 200ms"
+
+      - alert: ApiLatencyP99Breach
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{handler!="/metrics"}[5m])) by (le)) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          component: api
+          slo: api_p99_500ms
+        annotations:
+          summary: "API p99 latency is above 500ms"
+
+  # -------------------------------------------------------------------------
+  - name: tracefleet-stores
+    interval: 15s
+    rules:
+      - alert: ClickHouseInsertFailures
+        expr: increase(tracefleet_clickhouse_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: telemetry-sink
+        annotations:
+          summary: "ClickHouse operations are failing"
+          description: >
+            The sink pauses and holds its offsets when inserts fail, so telemetry is
+            buffered in Kafka rather than lost. Lag will grow until ClickHouse
+            recovers.
+          runbook: docs/RUNBOOK.md#clickhouse-unavailable
+
+      - alert: PostgresFailures
+        expr: increase(tracefleet_postgres_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: critical
+          component: incident-persister
+        annotations:
+          summary: "Incident persistence is failing"
+          description: >
+            Offsets are not committed on failure, so incidents will be replayed. The
+            upsert is idempotent, so no duplicates result.
+
+      - alert: ServiceDown
+        expr: tracefleet_service_up == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.service }} reports itself down"
+
+      - alert: ScrapeTargetMissing
+        # Distinct from ServiceDown: the process is not reachable at all.
+        expr: up{job=~"tracefleet-.*"} == 0
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus cannot scrape {{ $labels.job }}"
+          description: "Expected while the simulator is stopped; investigate otherwise."
+
+  # -------------------------------------------------------------------------
+  - name: tracefleet-ai
+    interval: 30s
+    rules:
+      - alert: AiValidationFailuresElevated
+        # The validator rejecting statements is it working. A sustained rise means
+        # the provider or the prompt has drifted and summaries are being withheld.
+        expr: increase(tracefleet_ai_validation_failures_total[30m]) > 20
+        for: 10m
+        labels:
+          severity: warning
+          component: ai-summary
+        annotations:
+          summary: "AI output validation is rejecting an unusual number of statements"
+          description: >
+            Check the reason breakdown. Rising ungrounded_number or unknown_citation
+            suggests the provider is hallucinating; forbidden_language suggests a
+            prompt regression.
+
+      - alert: AiProviderErrors
+        expr: increase(tracefleet_ai_requests_total{outcome="error"}[15m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          component: ai-summary
+        annotations:
+          summary: "The AI provider is returning errors"
+          description: >
+            Narrative generation is degraded. Deterministic evidence and factor
+            scores are unaffected and remain authoritative.

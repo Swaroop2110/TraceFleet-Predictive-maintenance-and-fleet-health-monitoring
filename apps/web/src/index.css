@@ -1,0 +1,63 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    @apply bg-gray-950 text-gray-100 antialiased overflow-hidden;
+    background: radial-gradient(circle at 50% -20%, #1e1b4b 0%, #030712 60%);
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-gray-900/40 backdrop-blur-xl border border-white/5 shadow-2xl;
+  }
+  .glow-text {
+    text-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+  }
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  .animate-pulse-slow {
+    animation: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+@keyframes float {
+  0% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Custom Leaflet Dark Popup */
+.leaflet-popup-content-wrapper {
+  background: rgba(17, 24, 39, 0.7) !important;
+  backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(147, 197, 253, 0.2) !important;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5) !important;
+  color: #f3f4f6 !important;
+  border-radius: 1rem !important;
+}
+.leaflet-popup-tip {
+  background: rgba(17, 24, 39, 0.7) !important;
+  backdrop-filter: blur(16px) !important;
+}
+.leaflet-container a.leaflet-popup-close-button {
+  color: #9ca3af !important;
+  transition: color 0.3s ease !important;
+}
+.leaflet-container a.leaflet-popup-close-button:hover {
+  color: #fff !important;
+}
+
+:root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; color: #dce6f2; background: #080f1b; }
+* { box-sizing: border-box; } button, input { font: inherit; } button { cursor: pointer; } button:disabled { opacity: .5; cursor: wait; } button:focus-visible,input:focus-visible { outline: 2px solid #38bdf8; outline-offset: 3px; }
+.dashboard { display: flex; height: 100dvh; } .navigation { width: 235px; flex-shrink: 0; padding: 30px 20px; display: flex; flex-direction: column; background: #0d1726; border-right: 1px solid #223046; }
+.brand { font-size: 24px; font-weight: 750; color: white; } .brand small { display: block; font-size: 8px; letter-spacing: 2px; color: #88a1bb; margin-top: 10px; } .tenant { font-size: 12px; color: #90a5bf; margin: 32px 0; line-height: 1.8; }
+nav { display: grid; gap: 8px; } button { padding: 10px 15px; border: 1px solid #2b3f58; border-radius: 8px; background: #16253a; text-align: left; color: #e4efff; } nav button[aria-current],button[aria-pressed=true] { background: #123d60; border-color: #2385ab; } .nav-footer { margin-top: auto; font-size: 12px; color: #90a5bf; } .nav-footer button { margin-top: 15px; }
+.workspace { flex: 1; position: relative; min-width: 0; display: flex; overflow: auto; } .workspace > main { flex: 1; } .page { width: 100%; padding: 38px; overflow: auto; } h1 { font-size: 30px; font-weight: 700; color: white; margin: 8px 0 24px; } h2 { font-size: 18px; font-weight: 650; margin: 12px 0; } h3 { font-size: 15px; margin: 15px 0; } p { color: #9fb0c6; line-height: 1.7; } .eyebrow { font-size: 10px; letter-spacing: 2px; text-transform: uppercase; color: #48c3e4; }
+.panel { border: 1px solid #243750; padding: 22px; background: #0e1b2b; border-radius: 12px; margin: 22px 0; } pre { font-size: 12px; overflow: auto; max-height: 430px; white-space: pre-wrap; color: #b7ccdf; } .actions { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 18px 0; } label { display: flex; flex-direction: column; font-size: 12px; color: #a6bdd1; gap: 8px; } input { padding: 12px; background: #091321; border: 1px solid #31455d; border-radius: 8px; color: white; }
+.incident-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(270px,1fr)); gap: 16px; margin-top: 24px; } .incident-card { padding: 22px; background: #0f1e30; } .badge { font-size: 10px; letter-spacing: 1px; font-weight: bold; padding: 6px 9px; border: 1px solid #41607d; border-radius: 5px; display: inline-block; color: #a7c2d9; } .CRITICAL { color: #ff9797; background: #471e2c; border-color: #943445; } .HIGH { color: #ffc288; background: #473120; } .MEDIUM { color: #ffe5a3; background: #3e3823; }
+.login-screen { display: grid; place-items: center; min-height: 100dvh; background: radial-gradient(ellipse at top,#17334b,#080f1b 65%); } .login-card { width: min(440px,90vw); border: 1px solid #2b4058; padding: 35px; border-radius: 18px; background: #0d1929; box-shadow: 0 30px 80px #0005; } .login-card label { margin: 18px 0; } .login-card button { width: 100%; text-align: center; background: #176a91; }
+.error { color: #ffaaa9; padding: 12px; background: #411b27; border-radius: 8px; font-size: 13px; } .banner { position: absolute; bottom: 15px; right: 15px; z-index: 1100; max-width: 400px; } .map-title { position: absolute; z-index: 1000; left: 28px; top: 22px; background: #0d1726e8; padding: 15px 24px; border: 1px solid #30465d; border-radius: 12px; } .map-title h1 { font-size: 22px; margin: 4px 0; } .map-title p { font-size: 11px; margin: 0; } .page-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 24px; } .phase-strip { display: flex; gap: 10px; flex-wrap: wrap; } .phase-strip div { background: #152e45; padding: 10px; border-left: 3px solid #3db6d1; flex: 1; } small { display: block; color: #8ca3ba; font-size: 10px; } .speed-chart { width: 100%; max-height: 210px; background: #091422; margin-top: 18px; } .factor-grid { display: flex; flex-wrap: wrap; gap: 10px; } .factor-grid button { flex: 1; min-width: 175px; } progress { width: 100%; accent-color: #38bdf8; display: block; margin: 12px 0; } .table-scroll { overflow-x: auto; } table { width: 100%; border-collapse: collapse; font-size: 12px; } th,td { padding: 12px; text-align: left; border-bottom: 1px solid #24364d; } th { color: #79abc8; } .highlight { background: #21405a; } .citation { padding: 3px 6px; font-size: 10px; margin: 0 4px; } .disclaimer { border-left: 3px solid #edbc65; padding: 12px; background: #332d21; }
+@media(max-width:800px) { .navigation { width: 150px; padding: 20px 10px; } .brand { font-size: 18px; } .brand small { letter-spacing: 0; } .page { padding: 20px; } .map-title { left: 10px; padding: 10px; } .page-heading { flex-wrap: wrap; } }
+.metric-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(170px,1fr)); gap: 14px; } .metric-grid .panel { margin: 8px 0; } .metric-grid strong { display: block; font-size: 26px; margin-top: 12px; color: #e4f2ff; }

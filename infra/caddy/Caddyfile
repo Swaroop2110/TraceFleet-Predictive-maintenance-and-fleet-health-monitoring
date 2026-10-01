@@ -1,0 +1,63 @@
+# TLS termination for the `tls` compose profile.
+#
+#     docker compose --profile tls up -d
+#
+# Caddy issues a local self-signed certificate automatically, so the stack can be
+# exercised over HTTPS without a public domain or a manual CSR. Point `tracefleet.local`
+# at 127.0.0.1 in /etc/hosts first.
+#
+# Service-to-service mTLS is out of scope for a local demo; docs/THREAT_MODEL.md
+# records it as the production control for the same threat.
+
+{
+	# Local CA rather than ACME: a demo must not reach out to Let's Encrypt.
+	local_certs
+	admin off
+}
+
+tracefleet.local {
+	# API first, so /api and /ws match before the SPA catch-all.
+	handle /api/* {
+		reverse_proxy api:8000 {
+			header_up X-Forwarded-Proto {scheme}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	handle /openapi.json {
+		reverse_proxy api:8000
+	}
+
+	handle /docs* {
+		reverse_proxy api:8000
+	}
+
+	# WebSocket upgrade is handled transparently by reverse_proxy.
+	handle /api/v1/ws/* {
+		reverse_proxy api:8000
+	}
+
+	handle {
+		reverse_proxy web:5173
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# Caddy's own version is not useful to a client and is useful to a scanner.
+		-Server
+	}
+
+	encode gzip zstd
+	log {
+		output stdout
+		format json
+	}
+}
+
+# Redirect plain HTTP so a bookmarked http:// link still works.
+http://tracefleet.local {
+	redir https://{host}{uri} permanent
+}

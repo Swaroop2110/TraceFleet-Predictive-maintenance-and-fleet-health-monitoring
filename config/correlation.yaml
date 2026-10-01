@@ -1,0 +1,26 @@
+# Correlation and reconstruction windows.
+
+# How far apart two signals for the same vehicle may be and still belong to one
+# incident.
+correlation_window_s: 60
+
+# Beyond this, an event is flagged `late`. It is still stored and still feeds
+# reconstruction; the flag exists so an operator knows the timeline was revised.
+lateness_window_s: 30
+
+# Telemetry pulled either side of the incident for the reconstructed timeline.
+pre_window_s: 60
+post_window_s: 30
+
+# Upper bound on how long an incident may sit in RECONSTRUCTING before it is
+# finalised anyway. Must be at least post_window_s or reconstruction would
+# always time out before the post-incident window closed.
+reconstruction_timeout_s: 300
+
+policy: same_vehicle_time_window
+
+# Memory guards for the incident processor. Per-vehicle windows are evicted
+# least-recently-used past these bounds so a 100K-vehicle run has a bounded
+# footprint instead of growing until the container is killed.
+max_active_vehicles: 200000
+max_active_incidents: 50000

@@ -1,0 +1,9 @@
+from fastapi import APIRouter
+
+FEATURE_FLAGS = ("{{ feature_id }}",)
+router = APIRouter(prefix="/{{ feature_id }}", tags=["{{ feature_id }}"])
+
+
+@router.get("")
+def list_{{ feature_id }}():
+    return []

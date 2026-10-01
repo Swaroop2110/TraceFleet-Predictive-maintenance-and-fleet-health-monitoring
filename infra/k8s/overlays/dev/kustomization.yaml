@@ -1,0 +1,64 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Development overlay: single replicas, the `dev` scale profile, debug logging.
+#
+#     kubectl apply -k infra/k8s/overlays/dev
+
+namespace: tracefleet-dev
+
+nameSuffix: -dev
+
+resources:
+  - ../../base
+
+# Overrides merge onto the base generator, so only the differences appear here.
+configMapGenerator:
+  - name: tracefleet-env
+    behavior: merge
+    literals:
+      - TRACEFLEET_ENV=development
+      - PROFILE=dev
+      - LOG_LEVEL=DEBUG
+      - OTEL_ENVIRONMENT=development
+      # Demo accounts are acceptable in a development namespace and are what make
+      # the deployment usable without provisioning users by hand.
+      - TRACEFLEET_SEED_DEMO_USERS=true
+
+replicas:
+  - name: api
+    count: 1
+  - name: validator
+    count: 1
+  - name: incident-processor
+    count: 1
+  - name: telemetry-sink
+    count: 1
+  - name: incident-persister
+    count: 1
+
+patches:
+  # Autoscaling off: a dev namespace should have predictable, minimal footprint, and
+  # an HPA fighting a fixed replica count is confusing to debug.
+  - target:
+      kind: HorizontalPodAutoscaler
+    patch: |
+      $patch: delete
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: api
+  - target:
+      kind: PodDisruptionBudget
+    patch: |
+      - op: replace
+        path: /spec/minAvailable
+        value: 0
+
+  - target:
+      kind: Deployment
+      name: web
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/env/0/value
+        value: api-dev:8000

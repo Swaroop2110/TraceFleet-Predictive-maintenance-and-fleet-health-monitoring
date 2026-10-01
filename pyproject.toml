@@ -1,0 +1,73 @@
+[project]
+name = "tracefleet"
+version = "1.0.0"
+description = "Fleet Incident Reconstruction & Causal Intelligence Platform"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+# `apps/stream-processor` is on the path because the processor package is
+# imported as `processor.*` by every role and by the unit tests. Declaring it
+# here rather than mutating sys.path in a conftest keeps `pytest` and `mypy`
+# looking at the same roots.
+pythonpath = [".", "apps/stream-processor", "apps/simulator"]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "integration: requires Kafka/Postgres/ClickHouse/Redis",
+    "slow: long-running (load, soak)",
+    "chaos: kills infrastructure and asserts recovery",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["packages", "apps"]
+omit = [
+    "*/tests/*",
+    "*/alembic/*",
+    "*/node_modules/*",
+    # Thin process entrypoints; exercised by integration and chaos runs rather
+    # than unit tests, and counting them distorts the core-package figure.
+    "apps/*/main.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["apps/web", "apps/api/alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM", "RUF"]
+ignore = [
+    "E501",    # line length is enforced by the formatter
+    "B008",    # FastAPI's Depends() in defaults is the documented pattern
+    "RUF012",  # SQLAlchemy __table_args__ tuples are not mutable class state
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "SIM117"]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+# Strict only on the shared packages. The PRD asks for `mypy --strict` on core
+# packages; applying it to the service layers would mean annotating every
+# SQLAlchemy and confluent-kafka boundary, which buys little.
+files = ["packages"]
+
+[[tool.mypy.overrides]]
+module = "packages.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+no_implicit_optional = true
+warn_unused_ignores = false
+strict_equality = true

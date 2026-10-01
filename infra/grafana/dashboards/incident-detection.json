@@ -1,0 +1,178 @@
+{
+  "uid": "tracefleet-incidents",
+  "title": "TraceFleet / Incident Detection",
+  "tags": ["tracefleet", "incidents"],
+  "timezone": "utc",
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "description": "Detection rate, severity mix, and the latency budgets from the PRD: under 2 s to dashboard, under 5 s for a critical alert.",
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Incidents detected (1h)",
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        { "expr": "sum(increase(tracefleet_incidents_detected_total[1h]))", "legendFormat": "detected" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Critical incidents (1h)",
+      "gridPos": { "h": 4, "w": 5, "x": 5, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(tracefleet_incidents_detected_total{severity=\"CRITICAL\"}[1h]))",
+          "legendFormat": "critical"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Alert latency p95",
+      "description": "Event time to alerts.critical publish. PRD target: under 5 s.",
+      "gridPos": { "h": 4, "w": 7, "x": 10, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tracefleet_event_to_alert_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Dashboard latency p95",
+      "description": "Event time to websocket push. PRD target: under 2 s.",
+      "gridPos": { "h": 4, "w": 7, "x": 17, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tracefleet_event_to_dashboard_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 2 }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "Detections by severity",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (severity) (rate(tracefleet_incidents_detected_total[5m]))",
+          "legendFormat": "{{severity}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "custom": { "fillOpacity": 20, "stacking": { "mode": "normal" } } } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Signals raised by detector",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (detector) (rate(tracefleet_signals_detected_total[5m]))",
+          "legendFormat": "{{detector}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Candidates suppressed by reason",
+      "description": "Suppression is the trigger rules discriminating. below_min_distinct_signals and missing_required_signal are why an isolated harsh brake is not an incident.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (reason) (rate(tracefleet_incidents_suppressed_total[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Lifecycle transitions",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (from_state, to_state) (rate(tracefleet_incident_state_transitions_total[5m]))",
+          "legendFormat": "{{from_state}} to {{to_state}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Reconstruction duration p50/p95",
+      "description": "Detection to OPEN, bounded by correlation.post_window_s and reconstruction_timeout_s.",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.5, sum(rate(tracefleet_incident_reconstruction_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p50"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(tracefleet_incident_reconstruction_seconds_bucket[5m])) by (le))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Late evidence re-reconstructions",
+      "description": "An incident revised after a late event arrived inside the lateness window.",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 20 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(increase(tracefleet_late_evidence_added_total[5m]))",
+          "legendFormat": "re-reconstructed"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

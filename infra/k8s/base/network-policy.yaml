@@ -1,0 +1,116 @@
+# Network policy: default deny, then allow only the paths the architecture needs.
+#
+# Default-deny is the point. Without it a compromised processor pod can reach the
+# Kubernetes API, the cloud metadata endpoint, and every other service in the
+# cluster. With it, each component can reach only its declared dependencies.
+#
+# Requires a CNI that enforces NetworkPolicy (Calico, Cilium, or a managed
+# equivalent). On a CNI that ignores them these objects apply silently and protect
+# nothing, so confirm enforcement before relying on it.
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  # Every pod needs DNS, so this is separated rather than repeated in each rule.
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: api
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/component: api
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Web proxy, ingress controller and monitoring.
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: web
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/name: monitoring
+      ports:
+        - protocol: TCP
+          port: 8000
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: datastore
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 6379 }
+        - { protocol: TCP, port: 8123 }
+        - { protocol: TCP, port: 9092 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: otel-collector
+      ports:
+        - { protocol: TCP, port: 4317 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: processors
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [validator, incident-processor, telemetry-sink, incident-persister, maintenance, migrate]
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Metrics scraping only. The processors expose no API and should accept nothing else.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/name: monitoring
+      ports:
+        - { protocol: TCP, port: 9108 }
+        - { protocol: TCP, port: 9109 }
+        - { protocol: TCP, port: 9110 }
+        - { protocol: TCP, port: 9111 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: datastore
+      ports:
+        - { protocol: TCP, port: 5432 }
+        - { protocol: TCP, port: 6379 }
+        - { protocol: TCP, port: 8123 }
+        - { protocol: TCP, port: 9092 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/component: otel-collector
+      ports:
+        - { protocol: TCP, port: 4317 }

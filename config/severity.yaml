@@ -1,0 +1,19 @@
+# Signal-combination to severity matrix.
+#
+# Rows are authored general-to-specific for readability. The policy evaluates
+# them most-specific-first (distinct_signals_gte, then number of required
+# signals, then the repeated flag), so file order does not decide the outcome.
+# `includes` means "all of these signals are present".
+#
+# Note: while incident_trigger.min_distinct_signals is 2, the INFO and LOW rows
+# cannot be reached by a triggered incident. They apply as soon as that
+# threshold is lowered, and they still describe candidate clusters.
+matrix:
+  - { when: { distinct_signals_gte: 1 }, severity: INFO }
+  - { when: { distinct_signals_gte: 1, repeated: true }, severity: LOW }
+  - { when: { distinct_signals_gte: 2 }, severity: MEDIUM }
+  - { when: { distinct_signals_gte: 3 }, severity: HIGH }
+  - { when: { distinct_signals_gte: 3, includes: [sudden_stop, harsh_braking] }, severity: CRITICAL }
+
+default: INFO
+disclaimer: "Thresholds are configuration defaults, not real-world safety thresholds."
